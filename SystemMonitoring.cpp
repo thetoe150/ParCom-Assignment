@@ -85,18 +85,18 @@ void PrintFileIOInfo(HANDLE hProcess) {
     }
 }
 
-uint64_t FromFileTime(const LPFILETIME& ft) {
-    ULARGE_INTEGER uli = { 0 };
-    uli.LowPart = ft->dwLowDateTime;
-    uli.HighPart = ft->dwHighDateTime;
-    return uli.QuadPart;
-}
-
 void PrintCPUusageInfo(DWORD processID) {
     HANDLE hProcess;
+    SYSTEM_INFO sysInfo;
     FILETIME  lpCreationTime, lpExitTime, lpKernelTime, lpUserTime, CurentSysTime;
-    uint64_t CPUusage, KernelTime, UserTime, CreationTime, totalUseTime, totalRealTime, Currenttime;
-    SYSTEMTIME   CreationSystemTime, KernelSystemTime, UserSystemTime, CurentSystemTime;
+    ULARGE_INTEGER KernelTime, UserTime, CreationTime, totalUseTime, totalRealTime, Currenttime;
+
+    SYSTEMTIME CreationSystemTime, KernelSystemTime, UserSystemTime, CurentSystemTime;
+    double CPUusagePercent;
+
+
+    GetSystemInfo(&sysInfo);
+    int numProcessors = sysInfo.dwNumberOfProcessors;
     
     GetSystemTimeAsFileTime(&CurentSysTime);
 
@@ -105,8 +105,8 @@ void PrintCPUusageInfo(DWORD processID) {
     printf("\n ---------------------------------Information about CPU usage of the process:---------------------------------\n");
     if (GetProcessTimes(hProcess, &lpCreationTime, &lpExitTime, &lpKernelTime, &lpUserTime)) {
         
-        Currenttime = FromFileTime(&CurentSysTime);
-        CreationTime = FromFileTime(&lpCreationTime);
+        memcpy(&Currenttime, &CurentSysTime, sizeof(FILETIME));
+        memcpy(&CreationTime, &lpCreationTime, sizeof(FILETIME));
         /*
         uint64_t EndTime;
         if (&lpExitTime == NULL) {
@@ -116,34 +116,35 @@ void PrintCPUusageInfo(DWORD processID) {
              EndTime = FromFileTime(&lpExitTime);
         }
         */
-         KernelTime = FromFileTime(&lpKernelTime);
-         UserTime = FromFileTime(&lpUserTime);
-         totalUseTime = KernelTime + UserTime;
-         totalRealTime = Currenttime - CreationTime;
-         CPUusage = totalUseTime * 100 / totalRealTime;
+         memcpy(&KernelTime, &lpKernelTime, sizeof(FILETIME));
+         memcpy(&UserTime, &lpUserTime, sizeof(FILETIME));
+         CPUusagePercent = (KernelTime.QuadPart + UserTime.QuadPart)/ numProcessors;
+         CPUusagePercent /= (Currenttime.QuadPart - CreationTime.QuadPart);
+         CPUusagePercent *=  100;
 
+         //Change filetime type to readable time format
          FileTimeToSystemTime(&lpCreationTime, &CreationSystemTime);
          FileTimeToSystemTime(&CurentSysTime, &CurentSystemTime);
          FileTimeToSystemTime(&lpKernelTime, &KernelSystemTime);
          FileTimeToSystemTime(&lpUserTime, &UserSystemTime);
     }
-    printf("\tCreation time of this process: %llu (%02d:%02d:%02d.%03d  %02d/%02d/%d)\n", 
-        static_cast<long long int>(CreationTime), CreationSystemTime.wHour, CreationSystemTime.wMinute,
+    printf("\tCreation time of this process:%02d:%02d:%02d.%03d  %02d/%02d/%d\n", 
+         CreationSystemTime.wHour, CreationSystemTime.wMinute,
         CreationSystemTime.wSecond, CurentSystemTime.wMilliseconds, CreationSystemTime.wDay, CreationSystemTime.wMonth,
         CreationSystemTime.wYear);
-    printf("\tCurrent time: %llu (%02d:%02d:%02d.%03d  %02d/%02d/%d)\n", 
-        static_cast<long long int>(Currenttime), CurentSystemTime.wHour, CurentSystemTime.wMinute,
+    printf("\tCurrent time:%02d:%02d:%02d.%03d  %02d/%02d/%d\n", 
+         CurentSystemTime.wHour, CurentSystemTime.wMinute,
         CurentSystemTime.wSecond, CurentSystemTime.wMilliseconds, CurentSystemTime.wDay, CurentSystemTime.wMonth,
         CurentSystemTime.wYear );
-    printf("\tKernel time of this process: %llu (%02d:%02d:%02d.%03d)\n",
-        static_cast<long long int>(KernelTime), KernelSystemTime.wHour, KernelSystemTime.wMinute,
+    printf("\tKernel time of this process: %02d:%02d:%02d.%03d\n",
+         KernelSystemTime.wHour, KernelSystemTime.wMinute,
         KernelSystemTime.wSecond, KernelSystemTime.wMilliseconds);
-    printf("\tUser time of this process: %llu (%02d:%02d:%02d.%03d)\n",
-        static_cast<long long int>(UserTime), UserSystemTime.wHour, UserSystemTime.wMinute,
+    printf("\tUser time of this process: %02d:%02d:%02d.%03d\n",
+         UserSystemTime.wHour, UserSystemTime.wMinute,
         UserSystemTime.wSecond, UserSystemTime.wMilliseconds);
-    printf("\tTotal CPU time of this process: %llu\n", static_cast<long long int>(totalUseTime));
-    printf("\tTotal real time running of this process: %llu\n", static_cast<long long int>(totalRealTime));
-    printf("\tCPU usage of this process: %d%%\n", static_cast<int>(CPUusage));
+   // printf("\tTotal CPU time of this process: %llu\n", static_cast<long long int>(totalUseTime));
+   // printf("\tTotal real time running of this process: %llu\n", static_cast<long long int>(totalRealTime));
+    printf("\tAverage CPU usage of this process since it was created: %.2f%%\n", CPUusagePercent);
     CloseHandle(hProcess);
 }
 
